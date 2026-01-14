@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>纳指科技 ETF 自适应策略分析 (Web版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: "Microsoft YaHei", sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* 顶部控制面板样式 - 极度紧凑优化 */
+        #controls {
+            padding: 5px 10px; /* 减小内边距 */
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px; /* 间距 */
+            font-size: 12px; /* 整体字体变小 */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 10;
+            height: auto; 
+            overflow: visible;
+            align-items: flex-start;
+        }
+        .control-group {
+            border: 1px solid #ccc;
+            padding: 2px 6px; /* 极窄内边距 */
+            border-radius: 4px;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            min-width: 140px;
+        }
+        .control-group h4 { 
+            margin: 0 0 2px 0; 
+            color: #333; 
+            font-size: 11px; 
+            border-bottom: 1px dashed #eee; 
+            padding-bottom: 1px;
+            font-weight: bold;
+        }
+        .input-row { display: flex; align-items: center; margin-bottom: 1px; height: 18px; }
+        .input-row label { width: 75px; color: #555; font-size: 11px; transform: scale(0.95); transform-origin: left; }
+        .input-row input[type=range] { width: 100px; cursor: pointer; height: 10px; }
+        .input-row span { width: 25px; text-align: right; color: #1E88E5; font-weight: bold; margin-left: 2px; font-size: 10px; }
+
+        /* 文件上传与按钮区域 - 紧凑版 */
+        .action-area {
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            gap: 6px;
+            border-left: 1px solid #ccc;
+            padding-left: 10px;
+            margin-left: 5px;
+        }
+        .btn {
+            padding: 2px 8px;
+            cursor: pointer;
+            border: 1px solid #999;
+            background: #fff;
+            border-radius: 3px;
+            font-size: 11px;
+            height: 20px;
+            line-height: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #e0e0e0; }
+        input[type="file"] { font-size: 10px; width: 150px; }
+        .file-hint { font-size: 9px; color: #888; margin-top: 0; line-height: 1; }
+
+        /* 图表容器 */
+        #chart-container { flex: 1; position: relative; width: 100%; min-height: 0; }
+        #main { width: 100%; height: 100%; }
+        
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 16px; color: #666; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; pointer-events: none;
+            z-index: 20; border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <div class="control-group">
+        <h4>1. 基础窗口</h4>
+        <div class="input-row"><label>短期波动(Z)</label><input type="range" id="ROLLING_WINDOW" min="5" max="60" step="1"><span id="val_ROLLING_WINDOW"></span></div>
+        <div class="input-row"><label>长期分位</label><input type="range" id="LONG_TERM_WINDOW" min="20" max="250" step="10"><span id="val_LONG_TERM_WINDOW"></span></div>
+        <div class="input-row"><label>RSI 周期</label><input type="range" id="RSI_WINDOW" min="5" max="30" step="1"><span id="val_RSI_WINDOW"></span></div>
+    </div>
+    
+    <div class="control-group" style="border-left: 3px solid #00C878;">
+        <h4>2. 强力买入 (★)</h4>
+        <div class="input-row"><label>Z-Score <</label><input type="range" id="THRES_SBUY_Z" min="-3.0" max="-0.5" step="0.1"><span id="val_THRES_SBUY_Z"></span></div>
+        <div class="input-row"><label>历史分位 <</label><input type="range" id="THRES_SBUY_PCT" min="0" max="1" step="0.05"><span id="val_THRES_SBUY_PCT"></span></div>
+        <div class="input-row"><label>RSI <</label><input type="range" id="THRES_SBUY_RSI" min="10" max="50" step="1"><span id="val_THRES_SBUY_RSI"></span></div>
+    </div>
+
+    <div class="control-group" style="border-left: 3px solid #74E6C6;">
+        <h4>3. 买入 (Buy)</h4>
+        <div class="input-row"><label>Z-Score <</label><input type="range" id="THRES_BUY_Z" min="-2.0" max="0.5" step="0.1"><span id="val_THRES_BUY_Z"></span></div>
+        <div class="input-row"><label>历史分位 <</label><input type="range" id="THRES_BUY_PCT" min="0" max="1" step="0.05"><span id="val_THRES_BUY_PCT"></span></div>
+    </div>
+
+    <div class="control-group" style="border-left: 3px solid #D5100C;">
+        <h4>4. 强力卖出 (★)</h4>
+        <div class="input-row"><label>Z-Score ></label><input type="range" id="THRES_SSELL_Z" min="1.0" max="4.0" step="0.1"><span id="val_THRES_SSELL_Z"></span></div>
+        <div class="input-row"><label>RSI ></label><input type="range" id="THRES_SSELL_RSI" min="60" max="95" step="1"><span id="val_THRES_SSELL_RSI"></span></div>
+    </div>
+    
+    <div class="control-group" style="border-left: 3px solid #F7A655;">
+        <h4>5. 卖出 (Sell)</h4>
+        <div class="input-row"><label>Z-Score ></label><input type="range" id="THRES_SELL_Z" min="0.0" max="3.0" step="0.1"><span id="val_THRES_SELL_Z"></span></div>
+        <div class="input-row"><label>历史分位 ></label><input type="range" id="THRES_SELL_PCT" min="0" max="1" step="0.05"><span id="val_THRES_SELL_PCT"></span></div>
+    </div>
+    
+    <div class="action-area">
+        <input type="file" id="csvFileInput" accept=".csv" title="上传本地 CSV">
+        <div class="file-hint">支持本地纳指科技.CSV替换</div>
+        <button class="btn" onclick="resetDefaults()">重置参数</button>
+    </div>
+</div>
+
+<div id="chart-container">
+    <div id="loading">正在加载数据...</div>
+    <div id="main"></div>
+</div>
+
+<script>
+// ==========================================
+// 1. 全局配置与工具函数
+// ==========================================
+const DEFAULT_FILE = '纳指科技.csv'; 
+const STORAGE_KEY_PARAMS = 'nasdaq_strategy_params_v3'; // 更新版本号以防冲突
+const STORAGE_KEY_ZOOM = 'nasdaq_strategy_zoom';
+let rawData = [];
+let myChart = null;
+let currentCalculatedData = null;
+let currentZoom = { start: 60, end: 100 };
+
+// 默认参数 (短期波动窗口改为 30)
+const defaultParams = {
+    ROLLING_WINDOW: 30, LONG_TERM_WINDOW: 80, RSI_WINDOW: 14,
+    THRES_SBUY_Z: -1.5, THRES_SBUY_PCT: 0.20, THRES_SBUY_RSI: 30,
+    THRES_BUY_Z: -0.5, THRES_BUY_PCT: 0.50,
+    THRES_SSELL_Z: 2.0, THRES_SSELL_RSI: 85,
+    THRES_SELL_Z: 1.0, THRES_SELL_PCT: 0.70
+};
+
+let params = { ...defaultParams };
+
+// --- 新配色配置 ---
+const COLOR_MAP = {
+    "Strong Buy":  "rgba(0, 200, 120, 0.85)",  // 深绿
+    "Buy":         "rgba(116, 230, 198, 0.65)", // 浅绿
+    "Hold":        "rgba(158, 158, 158, 0.60)", // 灰
+    "Sell":        "rgba(247, 166, 85, 0.65)",  // 橙
+    "Strong Sell": "rgba(213, 16, 12, 0.85)"    // 深红
+};
+
+const LABEL_MAP = {
+    "Strong Buy":  "强力买入", 
+    "Buy":         "买入",
+    "Hold":        "观望", 
+    "Sell":        "卖出", 
+    "Strong Sell": "强力卖出"
+};
+
+const LINE_COLORS = { 
+    close:   "#1E88E5",  // 经典蓝
+    nav:     "#b8860b",  // 土黄/暗金
+    premium: "#8E24AA"   // 提亮的紫
+};
+
+function debounce(func, wait) {
+    let timeout;
+    return function() {
+        const context = this, args = arguments;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), wait);
+    };
+}
+
+// ==========================================
+// 2. 数学计算逻辑 (保持核心算法不变)
+// ==========================================
+function calculateRollingStats(arr, windowSize) {
+    let means = new Array(arr.length).fill(null);
+    let stds = new Array(arr.length).fill(null);
+    for (let i = 0; i < arr.length; i++) {
+        if (i < windowSize - 1) continue;
+        let sum = 0, windowSlice = [];
+        for (let j = 0; j < windowSize; j++) {
+            let val = arr[i - j]; sum += val; windowSlice.push(val);
+        }
+        let mean = sum / windowSize;
+        means[i] = mean;
+        let sqDiffSum = 0;
+        for (let val of windowSlice) sqDiffSum += Math.pow(val - mean, 2);
+        stds[i] = Math.sqrt(sqDiffSum / (windowSize - 1));
+    }
+    return { means, stds };
+}
+
+function calculateRSI(prices, windowSize) {
+    let rsi = new Array(prices.length).fill(null);
+    let deltas = [];
+    for(let i=1; i<prices.length; i++) deltas.push(prices[i] - prices[i-1]);
+    deltas.unshift(0); 
+    for (let i = 0; i < prices.length; i++) {
+        if (i < windowSize) continue;
+        let gainSum = 0, lossSum = 0;
+        for (let j = 0; j < windowSize; j++) {
+            let d = deltas[i - j];
+            if (d > 0) gainSum += d; else lossSum += -d;
+        }
+        let avgGain = gainSum / windowSize;
+        let avgLoss = lossSum / windowSize;
+        if (avgLoss === 0) rsi[i] = 100;
+        else rsi[i] = 100 - (100 / (1 + (avgGain / avgLoss)));
+    }
+    return rsi;
+}
+
+function calculateRollingPercentile(arr, windowSize) {
+    let pct = new Array(arr.length).fill(null);
+    for (let i = 0; i < arr.length; i++) {
+        if (i < windowSize - 1) continue;
+        let current = arr[i];
+        let windowSlice = [];
+        for (let j = 0; j < windowSize; j++) windowSlice.push(arr[i - j]);
+        let count = 0;
+        for (let v of windowSlice) if (v <= current) count++;
+        pct[i] = count / windowSize;
+    }
+    return pct;
+}
+
+function processData(data) {
+    const dates = data.map(d => d.date);
+    const closes = data.map(d => d.close);
+    const premiums = data.map(d => d.premium);
+    const navs = data.map(d => d.nav);
+    
+    const rsiArr = calculateRSI(closes, params.RSI_WINDOW);
+    const { means: premMeans, stds: premStds } = calculateRollingStats(premiums, params.ROLLING_WINDOW);
+    const zScores = premiums.map((p, i) => {
+        if (premMeans[i] === null || premStds[i] === null || premStds[i] === 0) return null;
+        return (p - premMeans[i]) / premStds[i];
+    });
+    const pctArr = calculateRollingPercentile(premiums, params.LONG_TERM_WINDOW);
+    
+    const ratings = dates.map((_, i) => {
+        if (zScores[i] === null || pctArr[i] === null || rsiArr[i] === null) return "Hold";
+        const z = zScores[i], p = pctArr[i], r = rsiArr[i];
+        
+        if ((z < params.THRES_SBUY_Z && p < params.THRES_SBUY_PCT) || (r < params.THRES_SBUY_RSI)) return "Strong Buy";
+        if ((z > params.THRES_SSELL_Z) || (r > params.THRES_SSELL_RSI)) return "Strong Sell";
+        if ((z > params.THRES_SELL_Z) && (p > params.THRES_SELL_PCT)) return "Sell";
+        if ((z < params.THRES_BUY_Z) && (p < params.THRES_BUY_PCT)) return "Buy";
+        return "Hold";
+    });
+    
+    return { dates, closes, navs, premiums, ratings, zScores, pctArr, rsiArr };
+}
+
+// ==========================================
+// 3. 图表渲染 (逻辑增强)
+// ==========================================
+function updateChart() {
+    if (!rawData.length) return;
+    
+    currentCalculatedData = processData(rawData);
+    const { dates, closes, navs, premiums, ratings } = currentCalculatedData;
+    
+    // 信号系列构建：同时生成 MarkArea(区域) 和 MarkLine(单点补偿)
+    const signalSeriesConfig = [];
+    const ORDER = ["Strong Buy", "Buy", "Sell", "Strong Sell"];
+    
+    ORDER.forEach(type => {
+        let areas = [];
+        let singleLines = []; // 专门存储单日信号
+        let startIdx = -1;
+        
+        for (let i = 0; i < ratings.length; i++) {
+            if (ratings[i] === type) {
+                if (startIdx === -1) startIdx = i;
+            } else {
+                if (startIdx !== -1) {
+                    let endIdx = i - 1;
+                    if (startIdx === endIdx) {
+                        // 如果开始点等于结束点（单日信号），MarkArea 可能看不见，加入 MarkLine 列表
+                        singleLines.push({ xAxis: dates[startIdx] });
+                        // 同时也加入 Area 以防万一
+                        areas.push([{ xAxis: dates[startIdx] }, { xAxis: dates[endIdx] }]);
+                    } else {
+                        areas.push([{ xAxis: dates[startIdx] }, { xAxis: dates[endIdx] }]);
+                    }
+                    startIdx = -1;
+                }
+            }
+        }
+        // 处理结尾
+        if (startIdx !== -1) {
+            let endIdx = ratings.length - 1;
+            if (startIdx === endIdx) {
+                singleLines.push({ xAxis: dates[startIdx] });
+                areas.push([{ xAxis: dates[startIdx] }, { xAxis: dates[endIdx] }]);
+            } else {
+                areas.push([{ xAxis: dates[startIdx] }, { xAxis: dates[endIdx] }]);
+            }
+        }
+        
+        // 只有当有数据时才添加系列
+        if (areas.length > 0 || singleLines.length > 0) {
+            signalSeriesConfig.push({
+                name: LABEL_MAP[type],
+                type: 'line', // 依然使用 line 类型来承载 markArea，但隐藏线本身
+                symbol: 'none',
+                data: [], // 空数据，不画线
+                // 关键修改：图例图标强制设为矩形方块
+                itemStyle: { color: COLOR_MAP[type] },
+                markArea: {
+                    silent: true,
+                    itemStyle: { color: COLOR_MAP[type] },
+                    data: areas
+                },
+                markLine: {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { color: COLOR_MAP[type], width: 2, type: 'solid' }, // 增加宽度确保可见
+                    label: { show: false },
+                    data: singleLines // 渲染单日信号线
+                }
+            });
+        }
+    });
+
+    // 构建图例数据，强制指定图标形状
+    const legendData = [
+        { name: '溢价率(%)' }, { name: '收盘价' }, { name: '净值' },
+        ...signalSeriesConfig.map(s => ({
+            name: s.name,
+            icon: 'rect' // ★核心修改：强制图例为方块
+        }))
+    ];
+    
+    const option = {
+        title: { text: '纳指科技 ETF 策略动态分析', left: 10, top: 5, textStyle: { fontSize: 16 } },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'cross' },
+            backgroundColor: 'rgba(255, 255, 255, 0.96)',
+            padding: 10,
+            formatter: function (params) {
+                if (!params.length) return '';
+                const idx = params[0].dataIndex;
+                const date = params[0].axisValue;
+                const z = currentCalculatedData.zScores[idx];
+                const pct = currentCalculatedData.pctArr[idx];
+                const rsi = currentCalculatedData.rsiArr[idx];
+                
+                let html = `<div style="font-weight:bold; border-bottom:1px solid #eee; margin-bottom:5px;">${date}</div>`;
+                html += `<div style="font-size:11px; color:#555; margin-bottom:5px; line-height:1.5;">
+                           Z-Score: <b>${z !== null ? z.toFixed(2) : '-'}</b> <br/>
+                           分位(Pct): <b>${pct !== null ? (pct*100).toFixed(1)+'%' : '-'}</b> <br/>
+                           RSI: <b>${rsi !== null ? rsi.toFixed(1) : '-'}</b>
+                         </div>`;
+                
+                params.forEach(item => {
+                    // 过滤掉 markArea 产生的辅助数据
+                    if (item.value !== undefined && !item.seriesName.includes('买入') && !item.seriesName.includes('卖出')) {
+                        html += `<div>
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${item.color};margin-right:5px;"></span>
+                                    ${item.seriesName}: <b>${item.value}</b>
+                                 </div>`;
+                    }
+                });
+                
+                const signal = currentCalculatedData.ratings[idx];
+                if(LABEL_MAP[signal]) {
+                    const color = COLOR_MAP[signal]; 
+                    // 修正 tooltip 中文字颜色，使其不透明
+                    const solidColor = color.replace(/rgba\((\d+),\s*(\d+),\s*(\d+),.*\)/, 'rgb($1, $2, $3)');
+                    html += `<div style="margin-top:5px; padding-top:5px; border-top:1px dashed #ddd; color:${solidColor}; font-weight:bold;">
+                                策略: ${LABEL_MAP[signal]}
+                             </div>`;
+                }
+                return html;
+            }
+        },
+        legend: { 
+            top: 10, right: 30, 
+            itemWidth: 16, itemHeight: 16, // 图例图标大小
+            data: legendData 
+        },
+        grid: { left: 45, right: 45, bottom: 35, top: 70, containLabel: false },
+        xAxis: { type: 'category', data: dates, boundaryGap: false },
+        yAxis: [
+            { type: 'value', name: '溢价率 %', position: 'left', splitLine: { show: true, lineStyle: { type: 'dashed', color: '#eee' } } },
+            { type: 'value', name: '价格', position: 'right', splitLine: { show: false } }
+        ],
+        dataZoom: [
+            { type: 'inside', start: currentZoom.start, end: currentZoom.end },
+            { type: 'slider', bottom: 5, height: 20, start: currentZoom.start, end: currentZoom.end } // 缩小下方滑块高度
+        ],
+        series: [
+            { name: '溢价率(%)', type: 'line', yAxisIndex: 0, data: premiums, symbol: 'none', lineStyle: { width: 1.5, color: LINE_COLORS.premium }, itemStyle: {color: LINE_COLORS.premium} },
+            { name: '收盘价', type: 'line', yAxisIndex: 1, data: closes, symbol: 'none', lineStyle: { width: 2, color: LINE_COLORS.close }, itemStyle: {color: LINE_COLORS.close} },
+            { name: '净值', type: 'line', yAxisIndex: 1, data: navs, symbol: 'none', lineStyle: { width: 1.5, type:'solid', color: LINE_COLORS.nav }, itemStyle: {color: LINE_COLORS.nav} },
+            ...signalSeriesConfig
+        ]
+    };
+    
+    myChart.setOption(option, { notMerge: true });
+}
+
+const debouncedUpdateChart = debounce(updateChart, 100);
+
+// ==========================================
+// 4. 数据解析与初始化
+// ==========================================
+function parseCSV(text) {
+    const lines = text.split(/\r\n|\n/);
+    const data = [];
+    let headersFound = false;
+    for (let line of lines) {
+        if (!line.trim()) continue;
+        if (!headersFound) {
+            if (line.includes('日期') && line.includes('收盘价')) headersFound = true;
+            continue;
+        }
+        const parts = line.split(',');
+        if (parts.length < 5) continue; 
+        const date = parts[0].trim();
+        const close = parseFloat(parts[1]);
+        const nav = parseFloat(parts[2]);
+        const premium = parseFloat(parts[4].replace('%', '').trim());
+        if (!isNaN(close) && !isNaN(premium)) data.push({ date, close, nav, premium });
+    }
+    return data;
+}
+
+function syncParamsToUI() {
+    Object.keys(params).forEach(key => {
+        const el = document.getElementById(key);
+        const valDisplay = document.getElementById('val_' + key);
+        if (el && valDisplay) {
+            el.value = params[key];
+            valDisplay.innerText = params[key];
+        }
+    });
+}
+
+async function init() {
+    const savedParams = localStorage.getItem(STORAGE_KEY_PARAMS);
+    if (savedParams) {
+        try { params = { ...defaultParams, ...JSON.parse(savedParams) }; } catch(e) {}
+    }
+    const savedZoom = localStorage.getItem(STORAGE_KEY_ZOOM);
+    if (savedZoom) {
+        try { currentZoom = JSON.parse(savedZoom); } catch(e) {}
+    }
+
+    syncParamsToUI();
+    myChart = echarts.init(document.getElementById('main'));
+    
+    myChart.on('dataZoom', function (evt) {
+        const axis = myChart.getOption().dataZoom[0];
+        if (axis) {
+            currentZoom.start = axis.start;
+            currentZoom.end = axis.end;
+            localStorage.setItem(STORAGE_KEY_ZOOM, JSON.stringify(currentZoom));
+        }
+    });
+
+    window.addEventListener('resize', myChart.resize);
+    await loadCSV(DEFAULT_FILE);
+}
+
+async function loadCSV(url) {
+    const loader = document.getElementById('loading');
+    loader.style.display = 'block';
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("File not found");
+        rawData = parseCSV(await response.text());
+        updateChart();
+        loader.style.display = 'none';
+    } catch (e) { loader.innerText = "加载失败，请上传本地文件"; }
+}
+
+Object.keys(params).forEach(key => {
+    const el = document.getElementById(key);
+    const valDisplay = document.getElementById('val_' + key);
+    if (el) {
+        el.addEventListener('input', (e) => {
+            params[key] = parseFloat(e.target.value);
+            valDisplay.innerText = params[key];
+            localStorage.setItem(STORAGE_KEY_PARAMS, JSON.stringify(params));
+            debouncedUpdateChart();
+        });
+    }
+});
+
+document.getElementById('csvFileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        rawData = parseCSV(e.target.result);
+        updateChart();
+    };
+    reader.readAsText(file);
+});
+
+window.resetDefaults = function() {
+    if(confirm("恢复默认参数？")) {
+        localStorage.removeItem(STORAGE_KEY_PARAMS);
+        params = { ...defaultParams };
+        syncParamsToUI();
+        updateChart();
+    }
+};
+
+init();
+</script>
+</body>
+</html>
