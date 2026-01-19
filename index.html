@@ -142,7 +142,7 @@ let currentZoom = { start: 60, end: 100 };
 
 // 默认参数 (短期波动窗口改为 30)
 const defaultParams = {
-    ROLLING_WINDOW: 30, LONG_TERM_WINDOW: 80, RSI_WINDOW: 14,
+    ROLLING_WINDOW: 30, LONG_TERM_WINDOW: 60, RSI_WINDOW: 14,
     THRES_SBUY_Z: -1.5, THRES_SBUY_PCT: 0.20, THRES_SBUY_RSI: 30,
     THRES_BUY_Z: -0.5, THRES_BUY_PCT: 0.50,
     THRES_SSELL_Z: 2.0, THRES_SSELL_RSI: 85,
@@ -528,4 +528,5 @@ window.resetDefaults = function() {
 init();
 </script>
 </body>
+
 </html>
