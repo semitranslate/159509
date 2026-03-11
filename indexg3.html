@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>纳指科技 ETF 策略分析 Final</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+
+body { margin:0; padding:0; font-family:"Microsoft YaHei",sans-serif; display:flex; flex-direction:column; height:100vh; background:#fafafa; }
+
+/* ── 顶部控制栏 ── */
+#controls {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #d0d4db;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+.cg {
+  border: 1px solid #ccc; padding: 3px 7px 4px; border-radius: 5px;
+  background: #fff; display: flex; flex-direction: column; min-width: 150px;
+  flex-shrink: 0;
+}
+.cg h4 {
+  margin: 0 0 3px; color: #222; font-size: 11px;
+  border-bottom: 1px dashed #e8e8e8; padding-bottom: 2px; font-weight: 700;
+  display: flex; align-items: center; gap: 3px;
+}
+.pr { display:flex; align-items:center; margin-bottom:2px; height:20px; gap:3px; }
+.pr label { width:82px; color:#555; font-size:11px; flex-shrink:0; cursor:default; }
+.pr input[type=range] { width:72px; cursor:pointer; height:10px; flex-shrink:0; }
+.pr input[type=number] {
+  width:42px; height:16px; font-size:10px; border:1px solid #ccc;
+  border-radius:3px; text-align:center; color:#1565c0; font-weight:700;
+  padding:0 2px; outline:none;
+  -moz-appearance: textfield;
+}
+.pr input[type=number]::-webkit-inner-spin-button,
+.pr input[type=number]::-webkit-outer-spin-button { opacity:.5; }
+.pr input[type=number]:focus { border-color:#1E88E5; box-shadow:0 0 0 2px rgba(30,136,229,.15); }
+.pr input[type=number].err { border-color:#e53935; background:#fff3f3; color:#c62828; }
+
+.badge { display:inline-block; font-size:9px; padding:0 3px; border-radius:2px; font-weight:700; }
+.ba { background:#e3f2fd; color:#1565c0; }
+.bo { background:#fce4ec; color:#b71c1c; }
+
+/* RSI 模式切换 */
+.rsi-toggle { display:flex; gap:3px; margin-bottom:3px; }
+.rsi-toggle button {
+  flex:1; font-size:9px; padding:2px 3px; border:1px solid #ccc; border-radius:3px;
+  cursor:pointer; background:#f5f5f5; transition:all .15s; line-height:1.3;
+}
+.rsi-toggle button.active { background:#1E88E5; color:#fff; border-color:#1565c0; }
+.rsi-mode-desc { font-size:9px; color:#777; line-height:1.4; margin-bottom:2px; min-height:28px; white-space:pre-line; }
+
+/* 参数错误提示条 */
+#param-error {
+  flex-shrink: 0;
+  display: none;
+  background:#fff3e0; border:1px solid #ffb74d;
+  padding:3px 10px; font-size:10px; color:#e65100;
+  align-items:center; gap:5px; flex-wrap:wrap;
+}
+#param-error.show { display:flex; }
+
+/* 状态栏 */
+#status-bar {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  background: #f0f4ff;
+  font-size: 10px; color: #333;
+  border-top: 1px solid #d0d8f0;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  max-height: 22px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+#status-bar.show { display:flex; }
+.status-warn {
+  background:#fff3e0; color:#e65100; border:1px solid #ffcc80;
+  border-radius:3px; padding:1px 6px; font-size:9.5px; white-space:nowrap;
+}
+
+/* 操作区 */
+.action-area { display:flex; flex-direction:column; justify-content:center; gap:5px; border-left:1px solid #ddd; padding-left:8px; flex-shrink:0; }
+.btn { padding:2px 8px; cursor:pointer; border:1px solid #bbb; background:#fff; border-radius:3px; font-size:11px; height:20px; line-height:15px; transition:background .2s; }
+.btn:hover { background:#e8e8e8; }
+input[type="file"] { font-size:10px; width:150px; }
+.file-hint { font-size:9px; color:#999; line-height:1.4; }
+
+/* 回测面板 */
+#backtest-panel {
+  background:#fff; border:1px solid #ddd; border-radius:4px;
+  padding:4px 8px; min-width:215px; max-width:245px; flex-shrink:0;
+  font-size:10px; color:#333;
+}
+#backtest-panel h5 { margin:0 0 3px; font-size:10px; color:#555; font-weight:700; border-bottom:1px dashed #eee; padding-bottom:2px; }
+.bt-row { display:flex; align-items:center; margin-bottom:3px; gap:4px; }
+.bt-sig { width:52px; font-size:9.5px; font-weight:700; flex-shrink:0; }
+.bt-bar-wrap { flex:1; height:8px; position:relative; background:#f0f0f0; border-radius:2px; overflow:hidden; }
+.bt-bar-neg { position:absolute; top:0; right:50%; height:100%; border-radius:2px 0 0 2px; background:#e53935; }
+.bt-bar-pos { position:absolute; top:0; left:50%;  height:100%; border-radius:0 2px 2px 0; background:#43a047; }
+.bt-midline { position:absolute; top:0; left:50%; width:1px; height:100%; background:#bbb; }
+.bt-val { width:48px; text-align:right; font-size:9.5px; flex-shrink:0; }
+.bt-n   { width:26px; text-align:right; font-size:9px; color:#aaa; flex-shrink:0; }
+.bt-horizon { display:flex; gap:5px; margin-bottom:3px; align-items:center; font-size:9.5px; color:#666; }
+.bt-horizon label { cursor:pointer; display:flex; align-items:center; gap:2px; }
+.bt-disclaimer { font-size:8.5px; color:#bbb; margin-top:3px; line-height:1.3; }
+
+/* 图表容器 */
+#chart-container { flex:1; position:relative; width:100%; min-height:0; overflow:hidden; }
+#main { width:100%; height:100%; }
+#loading {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:14px; color:#555; background:rgba(255,255,255,.95);
+  padding:16px 22px; border-radius:8px; pointer-events:none;
+  z-index:20; border:1px solid #ddd; text-align:center; line-height:1.8;
+}
+</style>
+</head>
+<body>
+
+<div id="controls">
+
+  <div class="cg">
+    <h4>1. 基础窗口</h4>
+    <div class="pr"><label>短期波动(Z)</label><input type="range" id="ROLLING_WINDOW" min="5" max="60" step="1"><input type="number" id="n_ROLLING_WINDOW" min="5" max="60" step="1"></div>
+    <div class="pr"><label>长期分位</label><input type="range" id="LONG_TERM_WINDOW" min="20" max="250" step="5"><input type="number" id="n_LONG_TERM_WINDOW" min="20" max="250" step="5"></div>
+    <div class="pr"><label>RSI 周期</label><input type="range" id="RSI_WINDOW" min="5" max="30" step="1"><input type="number" id="n_RSI_WINDOW" min="5" max="30" step="1"></div>
+  </div>
+
+  <div class="cg" style="min-width:170px;">
+    <h4>2. RSI 数据源 <span style="font-size:9px;color:#e65100;font-weight:400;">⚠ 影响信号</span></h4>
+    <div class="rsi-toggle">
+      <button id="rsi-btn-price" onclick="setRsiMode('price')">价格 RSI<br><span style="font-size:8px;opacity:.8">动量过滤</span></button>
+      <button id="rsi-btn-prem"  onclick="setRsiMode('premium')">溢价率 RSI<br><span style="font-size:8px;opacity:.8">情绪捕捉</span></button>
+    </div>
+    <div class="rsi-mode-desc" id="rsi-mode-desc"></div>
+  </div>
+
+  <div class="cg" style="border-left:3px solid #00C878;">
+    <h4>3. 强力买入 ★</h4>
+    <div style="font-size:9px;color:#888;margin-bottom:2px;">(Z低 <span class="badge ba">AND</span> 分位低) <span class="badge bo">OR</span> RSI极低</div>
+    <div class="pr"><label>Z-Score &lt;</label><input type="range" id="THRES_SBUY_Z" min="-3.0" max="-0.5" step="0.1"><input type="number" id="n_THRES_SBUY_Z" min="-3.0" max="-0.5" step="0.1"></div>
+    <div class="pr"><label>历史分位 &lt;</label><input type="range" id="THRES_SBUY_PCT" min="0.05" max="0.45" step="0.05"><input type="number" id="n_THRES_SBUY_PCT" min="0.05" max="0.45" step="0.05"></div>
+    <div class="pr"><label>RSI 极低 &lt;</label><input type="range" id="THRES_SBUY_RSI" min="10" max="45" step="1"><input type="number" id="n_THRES_SBUY_RSI" min="10" max="45" step="1"></div>
+  </div>
+
+  <div class="cg" style="border-left:3px solid #74E6C6;">
+    <h4>4. 买入 <span class="badge ba">AND</span></h4>
+    <div class="pr"><label>Z-Score &lt;</label><input type="range" id="THRES_BUY_Z" min="-1.5" max="0.5" step="0.1"><input type="number" id="n_THRES_BUY_Z" min="-1.5" max="0.5" step="0.1"></div>
+    <div class="pr"><label>历史分位 &lt;</label><input type="range" id="THRES_BUY_PCT" min="0.10" max="0.90" step="0.05"><input type="number" id="n_THRES_BUY_PCT" min="0.10" max="0.90" step="0.05"></div>
+  </div>
+
+  <div class="cg" style="border-left:3px solid #D5100C;">
+    <h4>5. 强力卖出 ★ <span class="badge bo">OR</span></h4>
+    <div class="pr"><label>Z-Score &gt;</label><input type="range" id="THRES_SSELL_Z" min="1.0" max="4.0" step="0.1"><input type="number" id="n_THRES_SSELL_Z" min="1.0" max="4.0" step="0.1"></div>
+    <div class="pr"><label>RSI &gt;</label><input type="range" id="THRES_SSELL_RSI" min="55" max="95" step="1"><input type="number" id="n_THRES_SSELL_RSI" min="55" max="95" step="1"></div>
+  </div>
+
+  <div class="cg" style="border-left:3px solid #F7A655;">
+    <h4>6. 卖出 <span class="badge ba">AND</span></h4>
+    <div class="pr"><label>Z-Score &gt;</label><input type="range" id="THRES_SELL_Z" min="0.0" max="3.0" step="0.1"><input type="number" id="n_THRES_SELL_Z" min="0.0" max="3.0" step="0.1"></div>
+    <div class="pr"><label>历史分位 &gt;</label><input type="range" id="THRES_SELL_PCT" min="0.10" max="0.90" step="0.05"><input type="number" id="n_THRES_SELL_PCT" min="0.10" max="0.90" step="0.05"></div>
+  </div>
+
+  <div id="backtest-panel">
+    <h5>📊 信号后 N 日均值回报 <span style="font-weight:400;color:#aaa;font-size:9px;">仅供参考</span></h5>
+    <div class="bt-horizon">
+      持有:
+      <label><input type="radio" name="bth" value="5"  onchange="setBtHorizon(5)"> 5日</label>
+      <label><input type="radio" name="bth" value="10" onchange="setBtHorizon(10)"> 10日</label>
+      <label><input type="radio" name="bth" value="20" onchange="setBtHorizon(20)"> 20日</label>
+    </div>
+    <div id="bt-rows"><div style="color:#ccc;font-size:10px;text-align:center;padding:4px 0;">暂无数据</div></div>
+    <div class="bt-disclaimer">溢价回归 ≠ 价格上涨，不构成投资建议</div>
+  </div>
+
+  <div class="action-area">
+    <input type="file" id="csvFileInput" accept=".csv">
+    <div class="file-hint">CSV：日期,收盘价,净值,[估值],溢价率</div>
+    <button class="btn" onclick="resetDefaults()">重置参数</button>
+    <button class="btn" onclick="exportSignals()">导出信号 CSV</button>
+  </div>
+
+</div>
+
+<div id="param-error"></div>
+<div id="status-bar"></div>
+
+<div id="chart-container">
+  <div id="loading">正在加载数据…<br><span style="font-size:11px;color:#aaa">失败时请上传本地 CSV</span></div>
+  <div id="main"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// § 1  全局状态
+// ═══════════════════════════════════════════════
+const DEFAULT_FILE  = '纳指科技.csv';
+const SK_PARAMS     = 'nasdaq_etf_final_params';
+const SK_ZOOM       = 'nasdaq_etf_final_zoom';
+const SK_RSI_MODE   = 'nasdaq_etf_final_rsimode';
+const SK_BT_HORIZON = 'nasdaq_etf_final_bthorizon';
+
+let rawData     = [];
+let myChart     = null;
+let currentData = null;
+let currentZoom = { start:60, end:100 };
+let rsiMode     = 'price';
+let btHorizon   = 10;
+
+const defaultParams = {
+  ROLLING_WINDOW:   30,  LONG_TERM_WINDOW: 60,  RSI_WINDOW: 14,
+  THRES_SBUY_Z:    -1.5, THRES_SBUY_PCT:  0.20, THRES_SBUY_RSI:  30,
+  THRES_BUY_Z:     -0.5, THRES_BUY_PCT:   0.50,
+  THRES_SSELL_Z:    2.0, THRES_SSELL_RSI: 85,
+  THRES_SELL_Z:     1.0, THRES_SELL_PCT:  0.70,
+};
+let params = { ...defaultParams };
+
+const COLOR_MAP = {
+  "Strong Buy": "rgba(0,200,120,.82)", "Buy":  "rgba(116,230,198,.60)",
+  "Hold":       "rgba(158,158,158,.4)","Sell": "rgba(247,166,85,.62)",
+  "Strong Sell":"rgba(213,16,12,.82)"
+};
+const SOLID = {
+  "Strong Buy":"#00C878","Buy":"#43a047","Hold":"#9e9e9e",
+  "Sell":"#F7A655","Strong Sell":"#D5100C"
+};
+const LABEL = {
+  "Strong Buy":"强力买入","Buy":"买入","Hold":"观望",
+  "Sell":"卖出","Strong Sell":"强力卖出"
+};
+const RSI_DESC = {
+  price:   '用收盘价计算 RSI\n目的：防止在纳指暴跌动能中接刀\n与溢价率信号交叉，属于「动量过滤」\n⚠ RSI 极低触发与溢价率逻辑独立',
+  premium: '用溢价率计算 RSI\n目的：捕捉 QDII 额度恐慌引发的\n溢价率飙升/崩落动能\n指标与均值回归体系保持统一'
+};
+
+function debounce(fn, ms) {
+  let t;
+  return function() { clearTimeout(t); t = setTimeout(() => fn.apply(this, arguments), ms); };
+}
+
+// ═══════════════════════════════════════════════
+// § 2  参数校验
+// ═══════════════════════════════════════════════
+const VALIDATION_RULES = [
+  { test: () => params.THRES_SBUY_Z  >= params.THRES_BUY_Z,
+    ids: ['n_THRES_SBUY_Z',  'n_THRES_BUY_Z'],
+    msg: () => `强力买入 Z(${params.THRES_SBUY_Z}) 必须 < 买入 Z(${params.THRES_BUY_Z})` },
+  { test: () => params.THRES_SBUY_PCT >= params.THRES_BUY_PCT,
+    ids: ['n_THRES_SBUY_PCT','n_THRES_BUY_PCT'],
+    msg: () => `强力买入分位(${params.THRES_SBUY_PCT}) 必须 < 买入分位(${params.THRES_BUY_PCT})` },
+  { test: () => params.THRES_SELL_Z  >= params.THRES_SSELL_Z,
+    ids: ['n_THRES_SELL_Z',  'n_THRES_SSELL_Z'],
+    msg: () => `卖出 Z(${params.THRES_SELL_Z}) 必须 < 强力卖出 Z(${params.THRES_SSELL_Z})` },
+  { test: () => params.THRES_SBUY_RSI >= params.THRES_SSELL_RSI,
+    ids: ['n_THRES_SBUY_RSI','n_THRES_SSELL_RSI'],
+    msg: () => `强力买入 RSI(${params.THRES_SBUY_RSI}) 必须 < 强力卖出 RSI(${params.THRES_SSELL_RSI})` },
+];
+
+function validateParams() {
+  const errors = [], errIds = new Set();
+  VALIDATION_RULES.forEach(rule => {
+    if (rule.test()) { errors.push(rule.msg()); rule.ids.forEach(id => errIds.add(id)); }
+  });
+
+  document.querySelectorAll('input[type=number].err').forEach(el => el.classList.remove('err'));
+  const bar = document.getElementById('param-error');
+  if (errors.length) {
+    bar.innerHTML = '⚠ 参数矛盾：' + errors.join('；');
+    bar.classList.add('show');
+    errIds.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('err'); });
+    return false;
+  }
+  bar.classList.remove('show');
+  return true;
+}
+
+// ═══════════════════════════════════════════════
+// § 3  数学计算
+// ═══════════════════════════════════════════════
+function rollingStats(arr, w) {
+  const means = new Array(arr.length).fill(null);
+  const stds  = new Array(arr.length).fill(null);
+  for (let i = w-1; i < arr.length; i++) {
+    let sum=0; const sl=[];
+    for (let j=0; j<w; j++) { sum+=arr[i-j]; sl.push(arr[i-j]); }
+    const m=sum/w; means[i]=m;
+    let sq=0; for (const v of sl) sq+=(v-m)**2;
+    stds[i]=Math.sqrt(sq/(w-1));
+  }
+  return { means, stds };
+}
+
+function calcRSI(series, w) {
+  const rsi=new Array(series.length).fill(null);
+  const d=[0];
+  for (let i=1; i<series.length; i++) d.push(series[i]-series[i-1]);
+  for (let i=w; i<series.length; i++) {
+    let g=0,l=0;
+    for (let j=0; j<w; j++) { const v=d[i-j]; v>0?g+=v:l-=v; }
+    const ag=g/w,al=l/w;
+    rsi[i]=al<1e-9?100:100-100/(1+ag/al);
+  }
+  return rsi;
+}
+
+function rollingPct(arr, w) {
+  const pct=new Array(arr.length).fill(null);
+  for (let i=w-1; i<arr.length; i++) {
+    const cur=arr[i]; let cnt=0;
+    for (let j=0; j<w; j++) if (arr[i-j]<=cur) cnt++;
+    pct[i]=cnt/w;
+  }
+  return pct;
+}
+
+function processData(data) {
+  const dates    = data.map(d=>d.date);
+  const closes   = data.map(d=>d.close);
+  const navs     = data.map(d=>d.nav);
+  const premiums = data.map(d=>d.premium);
+  const premFill = premiums.map(v=>v??0);
+
+  const rsiSrc = rsiMode==='premium' ? premFill : closes;
+  const rsiArr = calcRSI(rsiSrc, params.RSI_WINDOW);
+
+  const { means:pMeans, stds:pStds } = rollingStats(premFill, params.ROLLING_WINDOW);
+  const zScores = premiums.map((p,i) => {
+    if (p===null || pMeans[i]===null || pStds[i]<1e-9) return null;
+    return (p-pMeans[i])/pStds[i];
+  });
+  const pctArr = rollingPct(premFill, params.LONG_TERM_WINDOW);
+
+  const ratings = dates.map((_,i) => {
+    const z=zScores[i],p=pctArr[i],r=rsiArr[i];
+    if (z===null||p===null||r===null) return "Hold";
+    if (z>params.THRES_SSELL_Z  || r>params.THRES_SSELL_RSI) return "Strong Sell";
+    if ((z<params.THRES_SBUY_Z && p<params.THRES_SBUY_PCT) || r<params.THRES_SBUY_RSI) return "Strong Buy";
+    if (z>params.THRES_SELL_Z   && p>params.THRES_SELL_PCT) return "Sell";
+    if (z<params.THRES_BUY_Z    && p<params.THRES_BUY_PCT)  return "Buy";
+    return "Hold";
+  });
+
+  return { dates, closes, navs, premiums, ratings, zScores, pctArr, rsiArr };
+}
+
+// ═══════════════════════════════════════════════
+// § 4  回测摘要
+// ═══════════════════════════════════════════════
+function calcBacktest(data, horizon) {
+  const { closes, ratings } = data;
+  const result = {};
+  ["Strong Buy","Buy","Sell","Strong Sell"].forEach(sig => {
+    const rets=[];
+    for (let i=0; i<closes.length; i++) {
+      if (ratings[i]!==sig) continue;
+      const ei=Math.min(i+horizon, closes.length-1);
+      if (ei===i) continue;
+      rets.push((closes[ei]-closes[i])/closes[i]*100);
+    }
+    if (!rets.length) { result[sig]=null; return; }
+    const avg=rets.reduce((a,b)=>a+b,0)/rets.length;
+    result[sig]={ avg, winRate:rets.filter(r=>r>0).length/rets.length, n:rets.length };
+  });
+  return result;
+}
+
+function renderBacktest(data) {
+  const bt=calcBacktest(data, btHorizon);
+  const container=document.getElementById('bt-rows');
+  const maxAbs=5; 
+  let html='';
+  ["Strong Buy","Buy","Sell","Strong Sell"].forEach(sig => {
+    const r=bt[sig], label=LABEL[sig], color=SOLID[sig];
+    if (!r) {
+      html+=`<div class="bt-row"><span class="bt-sig" style="color:${color}">${label}</span><span style="color:#ccc;font-size:9px;flex:1;">无信号</span></div>`;
+      return;
+    }
+    const pct=r.avg;
+    const w=Math.min(Math.abs(pct)/maxAbs*50, 50);
+    const valColor=pct>=0?'#43a047':'#e53935';
+    const sign=pct>=0?'+':'';
+    html+=`
+      <div class="bt-row">
+        <span class="bt-sig" style="color:${color}">${label}</span>
+        <div class="bt-bar-wrap">
+          <div class="bt-midline"></div>
+          ${pct<0 ? `<div class="bt-bar-neg" style="width:${w}%"></div>` : ''}
+          ${pct>=0? `<div class="bt-bar-pos" style="width:${w}%"></div>` : ''}
+        </div>
+        <span class="bt-val" style="color:${valColor}">${sign}${pct.toFixed(2)}%</span>
+        <span class="bt-n">×${r.n}</span>
+      </div>`;
+  });
+  container.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════
+// § 5  图表渲染
+// ═══════════════════════════════════════════════
+function buildSignalSeries(dates, ratings) {
+  return ["Strong Buy","Buy","Sell","Strong Sell"].map(type => {
+    const areas=[], singles=[];
+    let start=-1;
+    for (let i=0; i<ratings.length; i++) {
+      if (ratings[i]===type) { if (start===-1) start=i; }
+      else if (start!==-1) {
+        const e=i-1;
+        areas.push([{xAxis:dates[start]},{xAxis:dates[e]}]);
+        if (start===e) singles.push({xAxis:dates[start]});
+        start=-1;
+      }
+    }
+    if (start!==-1) {
+      const e=ratings.length-1;
+      areas.push([{xAxis:dates[start]},{xAxis:dates[e]}]);
+      if (start===e) singles.push({xAxis:dates[start]});
+    }
+    if (!areas.length && !singles.length) return null;
+    return {
+      name:LABEL[type], type:'line', symbol:'none', data:[],
+      itemStyle:{ color:COLOR_MAP[type] },
+      markArea:{ silent:true, itemStyle:{ color:COLOR_MAP[type] }, data:areas },
+      markLine:{ silent:true, symbol:'none', lineStyle:{ color:SOLID[type], width:2.5, type:'solid' }, label:{show:false}, data:singles }
+    };
+  }).filter(Boolean);
+}
+
+function updateChart() {
+  if (!rawData.length) return;
+  const valid=validateParams();
+
+  currentData=processData(rawData);
+  const { dates, closes, navs, premiums, ratings }=currentData;
+
+  const cnt={"Strong Buy":0,"Buy":0,"Hold":0,"Sell":0,"Strong Sell":0};
+  ratings.forEach(r=>cnt[r]++);
+  const latestPrem=premiums[premiums.length-1];
+  const latestSig=ratings[ratings.length-1];
+  const latestDate=dates[dates.length-1];
+  
+  const recent30 = premiums.slice(-30).filter(v => v !== null);
+  const recent60 = premiums.slice(-60).filter(v => v !== null);
+  const recent90 = premiums.slice(-90).filter(v => v !== null);
+  const recent180 = premiums.slice(-180).filter(v => v !== null);
+
+  const avg30 = recent30.length ? (recent30.reduce((a,b)=>a+b,0)/recent30.length).toFixed(1) : '-';
+  const avg60 = recent60.length ? (recent60.reduce((a,b)=>a+b,0)/recent60.length).toFixed(1) : '-';
+  const avg90 = recent90.length ? (recent90.reduce((a,b)=>a+b,0)/recent90.length).toFixed(1) : '-';
+  const avg180 = recent180.length ? (recent180.reduce((a,b)=>a+b,0)/recent180.length).toFixed(1) : '-';
+
+  const structWarn = avg30 !== '-' && parseFloat(avg30) > 10;
+
+  const sb=document.getElementById('status-bar');
+  sb.classList.add('show');
+  sb.innerHTML=`
+    <span>至 <b>${latestDate}</b>｜${dates.length}条</span>
+    <span>
+      溢价率 <b style="font-size:11px;">${latestPrem?.toFixed(2)}%</b> 
+      <span style="color:#555; background:#e0e0e0; padding:1px 4px; border-radius:2px; margin-left:4px;">
+        均值: 30日 <b style="color:${parseFloat(avg30)>10?'#e65100':'#333'}">${avg30}%</b> | 
+        60日 <b>${avg60}%</b> | 
+        90日 <b>${avg90}%</b> | 
+        180日 <b>${avg180}%</b>
+      </span>
+    </span>
+    <span>信号 <b style="color:${SOLID[latestSig]}">${LABEL[latestSig]}</b></span>
+    <span style="color:#aaa; font-size:9.5px;">
+      <span style="color:#00C878">★买:${cnt['Strong Buy']}</span>
+      <span style="color:#43a047"> 买:${cnt['Buy']}</span>
+      <span style="color:#888"> 望:${cnt['Hold']}</span>
+      <span style="color:#F7A655"> 卖:${cnt['Sell']}</span>
+      <span style="color:#D5100C"> ★卖:${cnt['Strong Sell']}</span>
+    </span>
+    ${structWarn?'<span class="status-warn">⚠ 结构性高溢价</span>':''}
+    ${!valid?'<span class="status-warn">⚠ 参数矛盾</span>':''}
+  `;
+
+  renderBacktest(currentData);
+
+  const signalSeries=buildSignalSeries(dates, ratings);
+  const legendData=[
+    {name:'溢价率(%)'},{name:'收盘价'},{name:'净值'},
+    ...signalSeries.map(s=>({name:s.name,icon:'rect'}))
+  ];
+
+  const option={
+    title:{
+      text:'纳指科技 ETF (159509) — 溢价率策略',
+      subtext:`RSI: ${rsiMode==='premium'?'溢价率情绪':'价格动量'} | 强力买入:(Z∧分位低)∨RSI极低 | 强力卖出:Z极高∨RSI极高`,
+      left:10, top:2,
+      textStyle:{fontSize:13},
+      subtextStyle:{fontSize:9, color:'#999'}
+    },
+    tooltip:{
+      trigger:'axis', axisPointer:{type:'cross'},
+      backgroundColor:'rgba(255,255,255,.97)', padding:10,
+      formatter(ps) {
+        if (!ps.length) return '';
+        const i=ps[0].dataIndex, date=ps[0].axisValue;
+        const z=currentData.zScores[i], pct=currentData.pctArr[i];
+        const rsi=currentData.rsiArr[i], prem=currentData.premiums[i];
+        const sig=currentData.ratings[i];
+        const rsiLabel=rsiMode==='premium'?'RSI(溢价率)':'RSI(价格)';
+        let h=`<div style="font-weight:700;border-bottom:1px solid #eee;padding-bottom:3px;margin-bottom:4px;">${date}</div>`;
+        h+=`<div style="font-size:11px;color:#444;line-height:1.9;">
+          溢价率: <b>${prem!=null?prem.toFixed(3)+'%':'-'}</b><br>
+          Z-Score: <b>${z!=null?z.toFixed(3):'-'}</b><br>
+          历史分位: <b>${pct!=null?(pct*100).toFixed(1)+'%':'-'}</b><br>
+          ${rsiLabel}: <b>${rsi!=null?rsi.toFixed(1):'-'}</b>
+        </div>`;
+        ps.forEach(item=>{
+          if (['溢价率(%)','收盘价','净值'].includes(item.seriesName)&&item.value!==undefined) {
+            const c=typeof item.color==='string'?item.color:'#888';
+            h+=`<div><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${c};margin-right:5px;"></span>${item.seriesName}: <b>${item.value}</b></div>`;
+          }
+        });
+        if (sig!=='Hold') {
+          h+=`<div style="margin-top:5px;padding-top:4px;border-top:1px dashed #ddd;color:${SOLID[sig]};font-weight:700;">信号: ${LABEL[sig]}</div>`;
+        }
+        return h;
+      }
+    },
+    legend:{ top:8, right:12, itemWidth:14, itemHeight:13, data:legendData, textStyle:{fontSize:10} },
+    grid:{ left:52, right:52, bottom:40, top:72, containLabel:false },
+    xAxis:{ type:'category', data:dates, boundaryGap:false, axisLabel:{fontSize:10} },
+    yAxis:[
+      { type:'value', name:'溢价率%', position:'left',
+        splitLine:{show:true, lineStyle:{type:'dashed',color:'#efefef'}},
+        axisLabel:{fontSize:10, formatter:v=>v.toFixed(1)} },
+      { type:'value', name:'价格', position:'right',
+        splitLine:{show:false}, axisLabel:{fontSize:10} }
+    ],
+    dataZoom:[
+      { type:'inside', start:currentZoom.start, end:currentZoom.end },
+      { type:'slider', bottom:4, height:22, start:currentZoom.start, end:currentZoom.end }
+    ],
+    series:[
+      { name:'溢价率(%)', type:'line', yAxisIndex:0, data:premiums, symbol:'none',
+        lineStyle:{width:1.5,color:'#8E24AA'}, itemStyle:{color:'#8E24AA'},
+        markLine:{ silent:true, symbol:'none',
+          data:[{yAxis:0}],
+          lineStyle:{color:'#999',type:'dashed',width:1},
+          label:{show:true, formatter:'0%', color:'#999', fontSize:9, position:'insideEndTop'}
+        }
+      },
+      { name:'收盘价', type:'line', yAxisIndex:1, data:closes, symbol:'none',
+        lineStyle:{width:2,color:'#1E88E5'}, itemStyle:{color:'#1E88E5'} },
+      { name:'净值',   type:'line', yAxisIndex:1, data:navs,   symbol:'none',
+        lineStyle:{width:1.5,color:'#b8860b'}, itemStyle:{color:'#b8860b'} },
+      ...signalSeries
+    ]
+  };
+
+  myChart.setOption(option, {notMerge:true});
+}
+
+const debouncedUpdate=debounce(updateChart, 120);
+
+// ═══════════════════════════════════════════════
+// § 6  CSV 解析
+// ═══════════════════════════════════════════════
+function parseCSV(text) {
+  const lines=text.split(/\r\n|\n/);
+  const data=[]; let found=false;
+  let ci={date:0,close:1,nav:2,premium:4};
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    if (!found) {
+      if (line.includes('日期')||line.toLowerCase().includes('date')) {
+        line.split(',').forEach((h,idx)=>{
+          const t=h.trim();
+          if (t==='日期'||t.toLowerCase()==='date') ci.date=idx;
+          else if (t.includes('收盘')) ci.close=idx;
+          else if (t==='净值') ci.nav=idx;
+          else if (t.includes('溢价率')||t.toLowerCase().includes('premium')) ci.premium=idx;
+        });
+        found=true;
+      }
+      continue;
+    }
+    const p=line.split(',');
+    if (p.length<3) continue;
+    const date=p[ci.date]?.trim();
+    const close=parseFloat(p[ci.close]);
+    const nav=parseFloat(p[ci.nav]);
+    const prem=parseFloat(p[ci.premium]?.replace('%','').trim());
+    if (date&&!isNaN(close)&&!isNaN(nav))
+      data.push({date,close,nav,premium:isNaN(prem)?null:prem});
+  }
+  return data;
+}
+
+// ═══════════════════════════════════════════════
+// § 7  UI 绑定
+// ═══════════════════════════════════════════════
+function bindParam(key) {
+  const slider=document.getElementById(key);
+  const numbox=document.getElementById('n_'+key);
+  if (!slider||!numbox) return;
+
+  slider.addEventListener('input',()=>{
+    const v=parseFloat(slider.value);
+    params[key]=v; numbox.value=v;
+    saveParams(); validateParams(); debouncedUpdate();
+  });
+  numbox.addEventListener('input',()=>{
+    let v=parseFloat(numbox.value);
+    if (isNaN(v)) return;
+    v=Math.max(parseFloat(numbox.min), Math.min(parseFloat(numbox.max), v));
+    params[key]=v; slider.value=v;
+    saveParams(); validateParams(); debouncedUpdate();
+  });
+  numbox.addEventListener('blur',()=>{
+    const step=parseFloat(numbox.step)||1;
+    const v=parseFloat((Math.round(params[key]/step)*step).toFixed(10));
+    params[key]=v; numbox.value=v; slider.value=v;
+  });
+}
+
+function syncUI() {
+  Object.keys(params).forEach(k=>{
+    const s=document.getElementById(k), n=document.getElementById('n_'+k);
+    if (s) s.value=params[k];
+    if (n) n.value=params[k];
+  });
+}
+function saveParams() { localStorage.setItem(SK_PARAMS, JSON.stringify(params)); }
+
+window.setRsiMode=function(mode){
+  rsiMode=mode;
+  localStorage.setItem(SK_RSI_MODE, mode);
+  document.getElementById('rsi-btn-price').classList.toggle('active', mode==='price');
+  document.getElementById('rsi-btn-prem').classList.toggle('active',  mode==='premium');
+  document.getElementById('rsi-mode-desc').innerText=RSI_DESC[mode];
+  if (rawData.length) updateChart(); 
+};
+
+window.setBtHorizon=function(n){
+  btHorizon=n;
+  localStorage.setItem(SK_BT_HORIZON, n);
+  if (currentData) renderBacktest(currentData);
+};
+
+async function init() {
+  try { const s=localStorage.getItem(SK_PARAMS); if (s) params={...defaultParams,...JSON.parse(s)}; } catch(e){}
+  try { const s=localStorage.getItem(SK_ZOOM);   if (s) currentZoom=JSON.parse(s); } catch(e){}
+  rsiMode   = localStorage.getItem(SK_RSI_MODE)   || 'price';
+  btHorizon = parseInt(localStorage.getItem(SK_BT_HORIZON)) || 10;
+
+  document.querySelectorAll('input[name=bth]').forEach(el=>{
+    if (parseInt(el.value)===btHorizon) el.checked=true;
+  });
+
+  syncUI();
+  Object.keys(params).forEach(bindParam);
+
+  rsiMode=rsiMode; 
+  document.getElementById('rsi-btn-price').classList.toggle('active', rsiMode==='price');
+  document.getElementById('rsi-btn-prem').classList.toggle('active',  rsiMode==='premium');
+  document.getElementById('rsi-mode-desc').innerText=RSI_DESC[rsiMode];
+
+  validateParams();
+
+  myChart=echarts.init(document.getElementById('main'));
+  myChart.on('dataZoom',()=>{
+    const az=myChart.getOption().dataZoom[0];
+    if (az) {
+      currentZoom.start=az.start; currentZoom.end=az.end;
+      localStorage.setItem(SK_ZOOM, JSON.stringify(currentZoom));
+    }
+  });
+  window.addEventListener('resize',()=>myChart.resize());
+
+  await loadCSV(DEFAULT_FILE);
+}
+
+async function loadCSV(url) {
+  const ldr=document.getElementById('loading');
+  ldr.style.display='block';
+  try {
+    const r=await fetch(url);
+    if (!r.ok) throw new Error();
+    rawData=parseCSV(await r.text());
+    if (!rawData.length) throw new Error();
+    ldr.style.display='none';
+    updateChart();
+  } catch(e) {
+    ldr.innerHTML='默认文件加载失败<br><span style="font-size:11px;color:#aaa">请上传本地 纳指科技.csv</span>';
+  }
+}
+
+document.getElementById('csvFileInput').addEventListener('change',function(e){
+  const file=e.target.files[0]; if (!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    rawData=parseCSV(ev.target.result);
+    document.getElementById('loading').style.display='none';
+    updateChart();
+  };
+  reader.readAsText(file,'utf-8');
+});
+
+window.resetDefaults=function(){
+  if (!confirm('恢复所有默认参数？')) return;
+  localStorage.removeItem(SK_PARAMS);
+  params={...defaultParams};
+  syncUI(); validateParams(); updateChart();
+};
+
+window.exportSignals=function(){
+  if (!currentData) return alert('暂无数据');
+  const {dates,closes,navs,premiums,ratings,zScores,pctArr,rsiArr}=currentData;
+  const rsiCol=rsiMode==='premium'?'RSI(溢价率)':'RSI(价格)';
+  let csv=`日期,收盘价,净值,溢价率(%),Z-Score,历史分位(%),${rsiCol},信号\n`;
+  dates.forEach((d,i)=>{
+    if (ratings[i]==='Hold') return;
+    csv+=[d,closes[i],navs[i],
+      premiums[i]?.toFixed(4)??'',
+      zScores[i]?.toFixed(3)??'',
+      pctArr[i]!=null?(pctArr[i]*100).toFixed(1):'',
+      rsiArr[i]?.toFixed(1)??'',
+      LABEL[ratings[i]]
+    ].join(',')+'\n';
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
+  a.download='纳指科技ETF信号_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+};
+
+init();
+</script>
+</body>
+</html>
